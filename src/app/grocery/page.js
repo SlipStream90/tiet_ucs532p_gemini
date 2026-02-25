@@ -1,72 +1,84 @@
 export default function Grocery() {
     return (
-      <div className="prose prose-invert max-w-none">
+      <>
         <h1>Smart Grocery Intelligence Module</h1>
   
         <p>
-          The Smart Grocery module extends the safety monitoring
-          framework into a personalized nutritional assistance
-          system capable of analyzing food availability and
-          supporting dietary planning.
+          The Smart Grocery module extends the kitchen safety framework into
+          a personalized nutritional intelligence system capable of analyzing
+          food availability and supporting structured dietary planning.
         </p>
+  
+        <div className="divider" />
   
         <h2>Motivation</h2>
         <p>
-          Individuals frequently struggle to maintain consistent
-          nutritional intake due to lack of awareness regarding
-          available food resources and dietary balance.
+          Individuals frequently struggle to maintain consistent nutritional
+          intake due to limited awareness of available food resources and
+          dietary balance. Manual tracking is inefficient and often inaccurate.
         </p>
+  
+        <div className="divider" />
   
         <h2>User Goal Definition</h2>
         <p>
-          Users specify daily nutritional targets such as protein
-          intake requirements. These targets act as reference
-          constraints for system evaluation.
+          Users specify daily nutritional targets, such as required protein
+          intake. These targets function as system-level constraints used to
+          evaluate inventory sufficiency and recommendation logic.
         </p>
+  
+        <div className="divider" />
   
         <h2>Visual Food Identification</h2>
         <p>
-          Using the existing vision pipeline, the system detects
-          food items present within the kitchen environment.
-          Identified items are mapped to a predefined nutritional
-          database.
+          The system reuses the computer vision pipeline to detect food items
+          present in the environment. Detected items are mapped to a structured
+          nutritional database containing macronutrient values.
         </p>
   
         <h2>Nutritional Estimation</h2>
         <p>
-          Each detected food item contributes an estimated protein
-          value. Aggregated nutritional availability is compared
-          against user-defined goals.
+          Each identified food item contributes an estimated protein value.
+          Aggregated nutritional availability is computed and compared
+          against user-defined intake goals.
         </p>
+  
+        <div className="divider" />
   
         <h2>Inventory Awareness</h2>
         <p>
-          Continuous monitoring enables automatic estimation of
-          food availability, reducing dependence on manual grocery
-          tracking.
+          Continuous monitoring enables automatic estimation of food
+          availability, reducing dependence on manual grocery tracking
+          systems.
         </p>
+  
+        <div className="divider" />
   
         <h2>Recommendation Engine</h2>
         <p>
-          When nutritional requirements are unmet, the system
-          recommends alternative protein sources restricted to
-          user-authorized preferences.
+          When nutritional requirements are unmet, the system generates
+          recommendations restricted to user-authorized preferences
+          and dietary constraints.
         </p>
+  
+        <div className="divider" />
   
         <h2>System Benefits</h2>
         <ul>
           <li>Automated grocery awareness</li>
-          <li>Nutritional consistency</li>
-          <li>Reduced manual tracking</li>
-          <li>Personalized dietary assistance</li>
+          <li>Improved nutritional consistency</li>
+          <li>Reduced manual inventory tracking</li>
+          <li>Personalized dietary support</li>
         </ul>
+  
+        <div className="divider" />
   
         <h2>Future Extensions</h2>
         <p>
-          Integration with mobile applications, barcode scanning,
-          and smart inventory systems can further enhance
-          decision accuracy.
+          Future enhancements may include mobile integration, barcode
+          scanning support, IoT-enabled pantry monitoring, and adaptive
+          dietary analytics.
         </p>
-      </div>
+      </>
     );
   }

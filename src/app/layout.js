@@ -1,34 +1,28 @@
-export const metadata = {
-  title: "AI Kitchen Documentation",
-};
+import "./globals.css";
+import Navbar from "../components/Navbar";
+import Sidebar from "../components/Sidebar";
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className="flex bg-slate-950 text-white">
+      <body className="bg-[#0a0a0f]">
+        <Navbar />
 
-        {/* Sidebar */}
-        <div className="w-64 h-screen bg-slate-900 p-6 fixed">
-          <h2 className="text-xl font-bold mb-6">
-            AI Kitchen Docs
-          </h2>
+        <div className="flex min-h-screen">
+          <Sidebar />
 
-          <nav className="space-y-3">
-            <a href="/">Overview</a>
-            <a href="/problem">Problem</a>
-            <a href="/methodology">Methodology</a>
-            <a href="/architecture">Architecture</a>
-            <a href="/grocery">Smart Grocery</a>
-            <a href="/weekly">Weekly Updates</a>
-            <a href="/team">Team</a>
-          </nav>
+          <main className="flex-1 flex justify-center">
+            <div className="
+              w-full 
+              max-w-4xl 
+              px-12 
+              py-20 
+              relative
+            ">
+              {children}
+            </div>
+          </main>
         </div>
-
-        {/* Page Content */}
-        <main className="ml-64 p-10 w-full">
-          {children}
-        </main>
-
       </body>
     </html>
   );

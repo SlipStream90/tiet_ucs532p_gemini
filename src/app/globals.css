@@ -1,26 +1,108 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Base Reset */
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: radial-gradient(
+    circle at 20% 0%,
+    #12121a 0%,
+    #0b0b12 40%,
+    #08080d 100%
+  );
+  color: #e6e6eb;
+}
+
+/* Typography System */
+h1 {
+  font-size: 42px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 24px;
+}
+
+h2 {
+  font-size: 24px;
+  font-weight: 600;
+  margin-top: 72px;
+  margin-bottom: 20px;
+}
+
+h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-top: 36px;
+  margin-bottom: 12px;
+}
+
+p {
+  color: #a8a8b3;
+  line-height: 1.75;
+  margin-bottom: 18px;
+}
+ul {
+  margin-top: 10px;
+  margin-bottom: 16px;
+  padding-left: 20px;
+}
+
+li {
+  margin-bottom: 6px;
+  color: #a1a1aa;
+}
+
+/* Divider */
+.divider {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    #27272a,
+    transparent
+  );
+  margin: 72px 0;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0b0b0f;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1f1f23;
+  border-radius: 6px;
+}
+/* Remove default anchor styles */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:visited {
+  color: inherit;
+}
+
+a:hover {
+  color: inherit;
+}
+
+a:focus {
+  outline: none;
+}
+
+a:active {
+  color: inherit;
+}
+
+/* Remove default focus ring for links */
+a:focus-visible {
+  outline: none;
 }

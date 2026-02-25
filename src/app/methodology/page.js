@@ -1,58 +1,63 @@
 export default function Methodology() {
     return (
-      <div className="prose prose-invert max-w-none">
+      <>
         <h1>Methodology</h1>
   
         <p>
           The proposed system follows a structured computer vision and
           machine learning pipeline designed to interpret kitchen activity
           in real time. The methodology emphasizes lightweight computation,
-          explainable decision making, and deployability on edge hardware.
+          explainable decision-making, and deployability on edge hardware.
         </p>
+  
+        <div className="divider" />
   
         <h2>System Overview</h2>
         <p>
-          The methodology converts raw visual information obtained from
-          camera input into meaningful safety and nutritional decisions.
-          Each processing stage progressively transforms image data into
-          structured representations suitable for analysis.
+          Raw visual data obtained from camera input is progressively
+          transformed into structured representations suitable for safety
+          evaluation and nutritional analysis. Each processing stage refines
+          the information hierarchy from pixels to actionable decisions.
         </p>
   
-        <h2>Step 1: Image Acquisition</h2>
+        <div className="divider" />
+  
+        <h2>Processing Pipeline</h2>
+  
+        <h3>Step 1: Image Acquisition</h3>
         <p>
-          Continuous video frames are captured using a fixed camera placed
-          within the kitchen environment. Frames serve as temporal inputs
-          enabling activity monitoring over time rather than isolated
-          observations.
+          Continuous video frames are captured using a fixed camera
+          positioned within the kitchen environment. Temporal continuity
+          enables behavior monitoring rather than isolated frame analysis.
         </p>
   
-        <h2>Step 2: Preprocessing</h2>
+        <h3>Step 2: Preprocessing</h3>
         <p>
-          Captured frames undergo resizing and grayscale conversion to
-          reduce computational complexity while preserving structural
-          information required for feature extraction.
+          Frames undergo resizing and grayscale conversion to reduce
+          computational complexity while preserving structural information
+          necessary for gradient-based feature extraction.
         </p>
   
-        <h2>Step 3: Feature Extraction using HOG</h2>
+        <h3>Step 3: Feature Extraction (HOG)</h3>
         <p>
-          Histogram of Oriented Gradients (HOG) is employed to extract
-          gradient orientation patterns representing object shape and edge
-          distribution. Unlike deep neural networks, HOG provides explicit
-          and interpretable feature representations.
+          Histogram of Oriented Gradients (HOG) extracts gradient
+          orientation patterns representing object shape and edge structure.
+          Unlike deep neural networks, HOG provides explicit and interpretable
+          feature representations.
         </p>
   
         <p>
-          The image is divided into cells where gradient directions are
-          computed and normalized across blocks to achieve illumination
-          invariance.
+          The image is divided into cells where gradient magnitudes and
+          orientations are computed and normalized across blocks to achieve
+          illumination invariance.
         </p>
   
-        <h2>Step 4: Machine Learning Classification</h2>
+        <h3>Step 4: Machine Learning Classification</h3>
         <p>
           Extracted HOG descriptors are supplied to supervised learning
           models such as Support Vector Machines and Random Forest
-          classifiers. These models categorize detected regions into
-          predefined classes including:
+          classifiers. Detected regions are categorized into predefined
+          classes including:
         </p>
   
         <ul>
@@ -62,37 +67,41 @@ export default function Methodology() {
           <li>Food items</li>
         </ul>
   
-        <h2>Step 5: Spatial Relationship Analysis</h2>
+        <h3>Step 5: Spatial Relationship Analysis</h3>
         <p>
-          Object coordinates obtained from classification are analyzed
-          geometrically. The Euclidean distance between entities is
-          calculated to determine interaction proximity.
+          Object coordinates are analyzed geometrically to evaluate
+          interaction proximity. The Euclidean distance between detected
+          entities is computed as:
         </p>
   
-        <pre>
-  D = √((x₁ − x₂)² + (y₁ − y₂)²)
-        </pre>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-md px-6 py-4 text-sm text-zinc-300 font-mono mt-4">
+          D = √((x₁ − x₂)² + (y₁ − y₂)²)
+        </div>
   
-        <h2>Step 6: Temporal Monitoring</h2>
+        <h3>Step 6: Temporal Monitoring</h3>
         <p>
-          Safety risks are evaluated across consecutive frames.
-          Time-based thresholds prevent false alarms caused by
-          momentary detections.
+          Risk conditions are evaluated across consecutive frames.
+          Time-based thresholds mitigate false alarms caused by
+          transient detections.
         </p>
   
-        <h2>Step 7: Decision Engine</h2>
+        <h3>Step 7: Decision Engine</h3>
         <p>
-          A rule-based reasoning module combines spatial and temporal
-          information to classify system states as safe, warning,
-          or hazardous conditions.
+          A rule-based reasoning module integrates spatial and temporal
+          parameters to classify system states as safe, warning, or
+          hazardous.
         </p>
+  
+        <div className="divider" />
   
         <h2>Design Philosophy</h2>
         <p>
           The methodology intentionally prioritizes classical computer
           vision techniques to ensure interpretability, computational
           efficiency, and feasibility for real-time embedded deployment.
+          The structured pipeline architecture enables modular upgrades
+          without architectural redesign.
         </p>
-      </div>
+      </>
     );
   }
