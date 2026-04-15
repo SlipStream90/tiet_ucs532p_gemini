@@ -149,6 +149,10 @@ def _capture_loop():
     frame_count = 0
     import classifier
     
+    # Local caches for persistent detections
+    cached_person_dets = []
+    cached_grocery_dets = []
+    
     while _stream_active:
         ret, frame = _cap.read()
         if not ret:
@@ -157,34 +161,45 @@ def _capture_loop():
             
         frame = cv2.resize(frame, (640, 480))
         clean_frame = frame.copy()
-        ret, clean_buffer = cv2.imencode('.jpg', clean_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
-        if ret:
+
+        # 1. IMMEDIATE BUFFER UPDATE (Non-Inference Frame)
+        # This ensures the MJPEG stream is always fluid
+        ret_c, clean_buffer = cv2.imencode('.jpg', clean_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
+        if ret_c:
             _current_frame_bytes_clean = clean_buffer.tobytes()
-            
+        
         detections = []
         state = "safe"
         flame_detected = False
         gas_conf = 0.0
         person_present = False
         person_box = None
-        
+
         # --- SAFETY MODEL PIPELINE ---
         if "safety" in _active_modes:
-            # 1. Person Detection (Improved Params & Thresholding)
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            boxes, weights = hog.detectMultiScale(gray, winStride=(4,4), padding=(8,8), scale=1.05)
+            # 1. Person Detection (Skip frames: every 10 frames)
+            if frame_count % 10 == 0:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                # Optimized winStride (8,8) and scale (1.1) for speed
+                boxes, weights = hog.detectMultiScale(gray, winStride=(8,8), padding=(8,8), scale=1.1)
+                
+                cached_person_dets = []
+                for idx, (x, y, w, h) in enumerate(boxes):
+                    if weights[idx] < 0.2: continue
+                    cached_person_dets.append({
+                        "label": "human", "confidence": float(weights[idx]), "bbox": [int(x), int(y), int(w), int(h)], "color": "green", "icon": "👤"
+                    })
             
-            for idx, (x, y, w, h) in enumerate(boxes):
-                if weights[idx] < 0.2: continue
+            # Apply cached person detections
+            for det in cached_person_dets:
                 person_present = True
-                person_box = (x, y, w, h)
-                detections.append({
-                    "label": "human", "confidence": float(weights[idx]), "bbox": [int(x), int(y), int(w), int(h)], "color": "green", "icon": "👤"
-                })
+                person_box = det["bbox"]
+                detections.append(det)
+                x, y, w, h = det["bbox"]
                 cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-                cv2.putText(frame, f"Person {weights[idx]:.2f}", (x, y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                cv2.putText(frame, f"Person {det['confidence']:.2f}", (x, y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-            # 2. Fire Masking
+            # 2. Fire Masking (Always run: relatively fast)
             hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
             mask = cv2.inRange(hsv, DEFAULT_LOWER_COLOR, DEFAULT_UPPER_COLOR)
             if person_present:
@@ -206,47 +221,43 @@ def _capture_loop():
                     cv2.rectangle(frame, (fx, fy), (fx+fw, fy+fh), (0, 0, 255), 2)
                     cv2.putText(frame, "FIRE", (fx, fy-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
                     
-            # 3. Gas Detection (Bypassed for now - IR feed needed)
-            # gas_conf = classifier.predict_gas(clean_frame)
-            gas_conf = 0.0
-            if gas_conf > 0.8:
-                detections.append({"label": "gas_leak", "confidence": gas_conf, "bbox": [50, 50, 100, 100], "color": "red", "icon": "💨"})
-                
             # State Logic Update & Alert
             if flame_detected:
                 state = "hazard"
                 cv2.putText(frame, "!!! DANGER: UNATTENDED FIRE !!!", (20, 50), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 3)
-            elif gas_conf > 0.8:
-                state = "hazard"
 
         # --- GROCERY TRACKER PIPELINE ---
         if "grocery" in _active_modes:
-            # 4. Food Detection (debounce auto-add)
-            if frame_count % 10 == 0:
+            # 4. Food Detection (Skip frames: every 15 frames)
+            if frame_count % 15 == 0:
                 preds = classifier.predict_from_image(clean_frame, top_k=1)
-                if preds:
-                    print(f"DEBUG GROCERY: {preds}")
+                cached_grocery_dets = []
                 if preds and preds[0]["confidence"] > 0.5:
                     label = preds[0]["label"]
-                    detections.append({
+                    cached_grocery_dets.append({
                         "label": label, "confidence": preds[0]["confidence"], "bbox": [10, 10, 80, 80], "color": "green", "icon": "🥦"
                     })
                     # Auto add to inventory if not added in the last 3 seconds
                     if time.time() - _last_added_time.get(label, 0) > 3:
                         add_to_inventory(label)
                         _last_added_time[label] = time.time()
+            
+            # Apply cached grocery detections
+            for det in cached_grocery_dets:
+                detections.append(det)
         
         _current_state = state
         _current_detections = detections
         
-        # Encode frames into bytes for streaming yields
-        ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
-        if ret:
+        # 2. UPDATE SAFETY UI BUFFER
+        ret_b, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
+        if ret_b:
             _current_frame_bytes = buffer.tobytes()
             
         frame_count += 1
-        time.sleep(0.03)  # ~30 fps target
+        # Dynamic sleep based on processing time could go here, but fixed 0.01 is safer for FPS
+        time.sleep(0.01)
         
     if _cap:
         _cap.release()
