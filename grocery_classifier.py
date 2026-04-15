@@ -1,12 +1,15 @@
 import os
 import numpy as np
 import cv2
+import shutil
+import joblib
 from skimage.feature import hog, local_binary_pattern
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import LabelEncoder, RobustScaler
 from sklearn.decomposition import PCA
+from sklearn.calibration import CalibratedClassifierCV
 
 # ─────────────────────────────────────────────
 # CONFIG
@@ -15,16 +18,20 @@ from sklearn.decomposition import PCA
 TRAIN_DIR = "train"
 VAL_DIR   = "val"
 TEST_DIR  = "test"
+MODEL_DIR = "models"
+BACKUP_DIR = "backup"
 
 IMAGE_SIZE = (128,128)
 TOP_K_CLASSES = 20
+DRY_RUN = False   # ⚠️ set False to move/delete data
+
+os.makedirs(MODEL_DIR, exist_ok=True)
 
 # ─────────────────────────────────────────────
-# CLASS → GROUP MAPPING
+# CLASS GROUPING (ONLY EASY CLASSES)
 # ─────────────────────────────────────────────
 
 CLASS_TO_GROUP = {
-
     # Fruits
     "Apple":"Fruit","Banana":"Fruit","Mango":"Fruit","Orange":"Fruit",
     "Pear":"Fruit","Peach":"Fruit","Plum":"Fruit","Kiwi":"Fruit",
@@ -38,15 +45,10 @@ CLASS_TO_GROUP = {
     "Pepper":"Vegetable","Zucchini":"Vegetable","Aubergine":"Vegetable",
     "Leek":"Vegetable","Garlic":"Vegetable","Ginger":"Vegetable",
     "Asparagus":"Vegetable","Red-Beet":"Vegetable",
-
-    # Dairy
-    "Milk":"Dairy","Oat-Milk":"Dairy","Soy-Milk":"Dairy","Sour-Milk":"Dairy",
-    "Yoghurt":"Dairy","Oatghurt":"Dairy","Soyghurt":"Dairy",
-    "Sour-Cream":"Dairy","Juice":"Dairy",
-
-    # Others
-    "Mushroom":"Other","Brown-Cap-Mushroom":"Other","Avocado":"Other"
 }
+
+def filter_easy_classes(classes):
+    return [c for c in classes if CLASS_TO_GROUP.get(c) in ["Fruit","Vegetable"]]
 
 # ─────────────────────────────────────────────
 # FEATURE CONFIG
@@ -54,18 +56,64 @@ CLASS_TO_GROUP = {
 
 HOG_PARAMS = {
     "orientations": 9,
-    "pixels_per_cell": (8,8),
+    "pixels_per_cell": (4,4),
     "cells_per_block": (2,2),
     "block_norm": "L2-Hys",
     "visualize": False,
     "channel_axis": None,
 }
 
-LBP_RADIUS = 1
-LBP_POINTS = 8
+COLOR_BINS = 64
 
 # ─────────────────────────────────────────────
-# GET TOP CLASSES
+# AUGMENTATION
+# ─────────────────────────────────────────────
+
+def augment(img):
+    if np.random.rand() < 0.5:
+        img = cv2.flip(img, 1)
+
+    if np.random.rand() < 0.3:
+        angle = np.random.randint(-15,15)
+        M = cv2.getRotationMatrix2D((64,64), angle, 1)
+        img = cv2.warpAffine(img, M, (128,128))
+
+    return img
+
+# ─────────────────────────────────────────────
+# FEATURE EXTRACTION
+# ─────────────────────────────────────────────
+
+def preprocess(path):
+    return cv2.resize(cv2.imread(path), IMAGE_SIZE)
+
+def extract(img):
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)/255.0
+
+    hog_feat = hog(gray, **HOG_PARAMS)
+
+    rgb=[]
+    for i in range(3):
+        rgb.extend(cv2.calcHist([img],[i],None,[COLOR_BINS],[0,256]).flatten())
+    rgb=np.array(rgb)/(np.sum(rgb)+1e-6)
+
+    hsv=cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    hsv_feat=[]
+    for i in range(3):
+        hsv_feat.extend(cv2.calcHist([hsv],[i],None,[COLOR_BINS],[0,256]).flatten())
+    hsv_feat=np.array(hsv_feat)/(np.sum(hsv_feat)+1e-6)
+
+    lbp=local_binary_pattern(gray,8,1,"uniform")
+    lbp_hist,_=np.histogram(lbp.ravel(),bins=32,range=(0,256))
+    lbp_hist=lbp_hist/(np.sum(lbp_hist)+1e-6)
+
+    edges=cv2.Canny((gray*255).astype(np.uint8),100,200)
+    edge_density=np.sum(edges)/(128*128)
+
+    return np.hstack([hog_feat,rgb,hsv_feat,lbp_hist,[edge_density]])
+
+# ─────────────────────────────────────────────
+# DATA UTILS
 # ─────────────────────────────────────────────
 
 def get_top_classes(train_dir,k=20):
@@ -77,66 +125,51 @@ def get_top_classes(train_dir,k=20):
     sorted_cls=sorted(counts.items(),key=lambda x:x[1],reverse=True)
     return [c for c,_ in sorted_cls[:k]]
 
-# ─────────────────────────────────────────────
-# PREPROCESS + FEATURES
-# ─────────────────────────────────────────────
+def clean_dataset(top_classes):
+    os.makedirs(BACKUP_DIR, exist_ok=True)
 
-def preprocess(path):
-    return cv2.resize(cv2.imread(path),IMAGE_SIZE)
+    for split in [TRAIN_DIR,VAL_DIR,TEST_DIR]:
+        for cls in os.listdir(split):
+            p=os.path.join(split,cls)
+            if cls not in top_classes:
+                if DRY_RUN:
+                    print("Would move:",p)
+                else:
+                    shutil.move(p, os.path.join(BACKUP_DIR, cls))
 
-def extract(img):
-    gray=cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)/255.0
-    hog_feat=hog(gray,**HOG_PARAMS)
-
-    rgb=[]
-    for i in range(3):
-        rgb.extend(cv2.calcHist([img],[i],None,[32],[0,256]).flatten())
-    rgb=np.array(rgb)/(np.sum(rgb)+1e-6)
-
-    hsv=cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
-    hsv_feat=[]
-    for i in range(3):
-        hsv_feat.extend(cv2.calcHist([hsv],[i],None,[32],[0,256]).flatten())
-    hsv_feat=np.array(hsv_feat)/(np.sum(hsv_feat)+1e-6)
-
-    lbp=local_binary_pattern(gray,LBP_POINTS,LBP_RADIUS,"uniform")
-    lbp_hist,_=np.histogram(lbp.ravel(),bins=32,range=(0,256))
-    lbp_hist=lbp_hist/(np.sum(lbp_hist)+1e-6)
-
-    edges=cv2.Canny((gray*255).astype(np.uint8),100,200)
-    edge_density=np.sum(edges)/(128*128)
-
-    return np.hstack([hog_feat,rgb,hsv_feat,lbp_hist,[edge_density]])
-
-# ─────────────────────────────────────────────
-# LOAD DATA
-# ─────────────────────────────────────────────
-
-def load_data(path,allowed):
+def load_data(path,allowed,augment_data=False):
     X,y=[],[]
     for cls in os.listdir(path):
         if cls not in allowed: continue
         d=os.path.join(path,cls)
+
         for img in os.listdir(d):
             try:
-                X.append(extract(preprocess(os.path.join(d,img))))
+                image=preprocess(os.path.join(d,img))
+                if augment_data:
+                    image=augment(image)
+
+                X.append(extract(image))
                 y.append(cls)
             except:
                 pass
+
     return np.array(X),np.array(y)
 
-def load_coarse_data(path,allowed):
+def load_coarse(path,allowed):
     X,y=[],[]
     for cls in os.listdir(path):
         if cls not in allowed: continue
-        group=CLASS_TO_GROUP.get(cls,"Other")
+        grp=CLASS_TO_GROUP.get(cls)
         d=os.path.join(path,cls)
+
         for img in os.listdir(d):
             try:
                 X.append(extract(preprocess(os.path.join(d,img))))
-                y.append(group)
+                y.append(grp)
             except:
                 pass
+
     return np.array(X),np.array(y)
 
 # ─────────────────────────────────────────────
@@ -144,91 +177,116 @@ def load_coarse_data(path,allowed):
 # ─────────────────────────────────────────────
 
 def build_model():
-    return VotingClassifier([
+    base = VotingClassifier([
         ("svm",SVC(C=20,probability=True,class_weight="balanced")),
-        ("rf",RandomForestClassifier(n_estimators=300,class_weight="balanced")),
-        ("lr",LogisticRegression(max_iter=1000,class_weight="balanced"))
-    ],voting="soft")
+        ("rf",RandomForestClassifier(n_estimators=400,class_weight="balanced")),
+        ("lr",LogisticRegression(max_iter=1500,class_weight="balanced"))
+    ], voting="soft")
+
+    return CalibratedClassifierCV(base, method="sigmoid", cv=3)
 
 # ─────────────────────────────────────────────
-# CREATE GROUPS
+# TRAIN
 # ─────────────────────────────────────────────
 
-def create_groups(classes):
-    groups={}
-    for cls in classes:
-        grp=CLASS_TO_GROUP.get(cls,"Other")
-        if grp not in groups:
-            groups[grp]=[]
-        groups[grp].append(cls)
-    return list(groups.values())
+def train():
 
-# ─────────────────────────────────────────────
-# TRAIN SYSTEM
-# ─────────────────────────────────────────────
+    top_classes = get_top_classes(TRAIN_DIR, TOP_K_CLASSES)
+    top_classes = filter_easy_classes(top_classes)
 
-def train_system():
+    print("\nFinal classes:", top_classes)
 
-    top_classes = get_top_classes(TRAIN_DIR,TOP_K_CLASSES)
-    groups = create_groups(top_classes)
-
-    print("\nGroups:",groups)
+    clean_dataset(top_classes)
 
     # COARSE
-    Xc_train,yc_train = load_coarse_data(TRAIN_DIR,top_classes)
-    Xc_val,yc_val     = load_coarse_data(VAL_DIR,top_classes)
+    Xc,yc = load_coarse(TRAIN_DIR,top_classes)
 
-    le_coarse=LabelEncoder()
-    yc_train=le_coarse.fit_transform(yc_train)
-    yc_val=le_coarse.transform(yc_val)
+    le_c=LabelEncoder()
+    yc=le_c.fit_transform(yc)
 
-    scaler_c=RobustScaler()
-    Xc_train=scaler_c.fit_transform(Xc_train)
-    Xc_val=scaler_c.transform(Xc_val)
+    sc_c=RobustScaler()
+    Xc=sc_c.fit_transform(Xc)
 
     pca_c=PCA(0.95)
-    Xc_train=pca_c.fit_transform(Xc_train)
-    Xc_val=pca_c.transform(Xc_val)
+    Xc=pca_c.fit_transform(Xc)
 
-    coarse_model=build_model()
-    coarse_model.fit(Xc_train,yc_train)
+    coarse=build_model()
+    coarse.fit(Xc,yc)
 
     # EXPERTS
-    experts=[]
+    experts={}
 
-    for group in groups:
-        print(f"\nTraining Expert for {group[0]} group")
+    for grp in ["Fruit","Vegetable"]:
+        group_classes=[c for c in top_classes if CLASS_TO_GROUP[c]==grp]
 
-        X_tr,y_tr=load_data(TRAIN_DIR,set(group))
-        X_val,y_val=load_data(VAL_DIR,set(group))
+        if len(group_classes)==0:
+            continue
+
+        X,y=load_data(TRAIN_DIR,set(group_classes),augment_data=True)
 
         le=LabelEncoder()
-        y_tr=le.fit_transform(y_tr)
-        y_val=le.transform(y_val)
+        y=le.fit_transform(y)
 
-        scaler=RobustScaler()
-        X_tr=scaler.fit_transform(X_tr)
-        X_val=scaler.transform(X_val)
+        sc=RobustScaler()
+        X=sc.fit_transform(X)
 
         pca=PCA(0.95)
-        X_tr=pca.fit_transform(X_tr)
-        X_val=pca.transform(X_val)
+        X=pca.fit_transform(X)
 
         model=build_model()
-        model.fit(X_tr,y_tr)
+        model.fit(X,y)
 
-        experts.append({
+        experts[grp]={
             "model":model,
-            "scaler":scaler,
+            "scaler":sc,
             "pca":pca,
-            "le":le,
-            "group":CLASS_TO_GROUP[group[0]]
-        })
+            "le":le
+        }
 
-    return coarse_model,scaler_c,pca_c,le_coarse,experts
+    # SAVE MODELS
+    joblib.dump(coarse, f"{MODEL_DIR}/coarse_model.pkl")
+    joblib.dump(sc_c, f"{MODEL_DIR}/coarse_scaler.pkl")
+    joblib.dump(pca_c, f"{MODEL_DIR}/coarse_pca.pkl")
+    joblib.dump(le_c, f"{MODEL_DIR}/coarse_label_encoder.pkl")
+
+    for grp, ex in experts.items():
+        joblib.dump(ex["model"], f"{MODEL_DIR}/{grp}_model.pkl")
+        joblib.dump(ex["scaler"], f"{MODEL_DIR}/{grp}_scaler.pkl")
+        joblib.dump(ex["pca"], f"{MODEL_DIR}/{grp}_pca.pkl")
+        joblib.dump(ex["le"], f"{MODEL_DIR}/{grp}_label_encoder.pkl")
+
+    print("\nModels saved!")
+
+    return coarse,sc_c,pca_c,le_c,experts
 
 # ─────────────────────────────────────────────
-# INFERENCE
+# LOAD MODELS
+# ─────────────────────────────────────────────
+
+def load_models():
+
+    coarse = joblib.load(f"{MODEL_DIR}/coarse_model.pkl")
+    sc_c   = joblib.load(f"{MODEL_DIR}/coarse_scaler.pkl")
+    pca_c  = joblib.load(f"{MODEL_DIR}/coarse_pca.pkl")
+    le_c   = joblib.load(f"{MODEL_DIR}/coarse_label_encoder.pkl")
+
+    experts={}
+
+    for grp in ["Fruit","Vegetable"]:
+        try:
+            experts[grp]={
+                "model":joblib.load(f"{MODEL_DIR}/{grp}_model.pkl"),
+                "scaler":joblib.load(f"{MODEL_DIR}/{grp}_scaler.pkl"),
+                "pca":joblib.load(f"{MODEL_DIR}/{grp}_pca.pkl"),
+                "le":joblib.load(f"{MODEL_DIR}/{grp}_label_encoder.pkl")
+            }
+        except:
+            pass
+
+    return coarse,sc_c,pca_c,le_c,experts
+
+# ─────────────────────────────────────────────
+# PREDICT
 # ─────────────────────────────────────────────
 
 def predict(path,coarse,sc_c,pca_c,le_c,experts,k=3):
@@ -239,33 +297,33 @@ def predict(path,coarse,sc_c,pca_c,le_c,experts,k=3):
     x=pca_c.transform(x)
 
     group_probs=coarse.predict_proba(x)[0]
-    gid=np.argmax(group_probs)
-    group=le_c.inverse_transform([gid])[0]
-
-    # select expert
-    expert=None
-    for ex in experts:
-        if ex["group"]==group:
-            expert=ex
-            break
-
-    x=expert["scaler"].transform([feat])
-    x=expert["pca"].transform(x)
-
-    probs=expert["model"].predict_proba(x)[0]
-
-    idx=np.argsort(probs)[::-1][:k]
+    top_groups=np.argsort(group_probs)[::-1][:2]
 
     results=[]
-    total=0
 
-    for i in idx:
-        label=expert["le"].inverse_transform([i])[0]
-        p=probs[i]*group_probs[gid]
-        total+=p
-        results.append((label,float(p)))
+    for gid in top_groups:
+        grp=le_c.inverse_transform([gid])[0]
 
-    return results,total
+        if grp not in experts:
+            continue
+
+        expert=experts[grp]
+
+        x2=expert["scaler"].transform([feat])
+        x2=expert["pca"].transform(x2)
+
+        probs=expert["model"].predict_proba(x2)[0]
+
+        for i,p in enumerate(probs):
+            label=expert["le"].inverse_transform([i])[0]
+            results.append((label,p*group_probs[gid]))
+
+    results.sort(key=lambda x:x[1],reverse=True)
+
+    top=results[:k]
+    total=sum(p for _,p in top)
+
+    return top,total
 
 # ─────────────────────────────────────────────
 # MAIN
@@ -273,7 +331,11 @@ def predict(path,coarse,sc_c,pca_c,le_c,experts,k=3):
 
 if __name__=="__main__":
 
-    coarse,sc_c,pca_c,le_c,experts = train_system()
+    # Train once
+    coarse,sc_c,pca_c,le_c,experts=train()
+
+    # OR load models
+    # coarse,sc_c,pca_c,le_c,experts = load_models()
 
     sample_class=os.listdir(TEST_DIR)[0]
     sample_img=os.listdir(os.path.join(TEST_DIR,sample_class))[0]

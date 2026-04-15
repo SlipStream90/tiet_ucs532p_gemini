@@ -40,4 +40,24 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-/models
+/models/*.pkl
+/models/*.joblib
+/train/
+/val/
+/test/
+/backup/
+
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.env
+
+# gitignore expansion for common tools
+.vscode/
+.idea/
+*.swp
+*.bak
